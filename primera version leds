@@ -1,0 +1,68 @@
+/*
+ * ui.c
+ *  Control de los LEDs de resultado del Wordle
+ */
+
+#include "ui.h"
+#include "main.h"   // para los puertos y pines PE8..PE12
+
+// Asignación de LEDs a pines
+#define LED0_GPIO_PORT   GPIOE
+#define LED0_PIN         GPIO_PIN_8   // primera letra
+
+#define LED1_GPIO_PORT   GPIOE
+#define LED1_PIN         GPIO_PIN_9   // segunda letra
+
+#define LED2_GPIO_PORT   GPIOE
+#define LED2_PIN         GPIO_PIN_10  // tercera letra
+
+#define LED3_GPIO_PORT   GPIOE
+#define LED3_PIN         GPIO_PIN_11  // cuarta letra
+
+#define LED4_GPIO_PORT   GPIOE
+#define LED4_PIN         GPIO_PIN_12  // quinta letra
+
+static void UI_SetLed(uint8_t index, uint8_t estado)
+{
+    GPIO_TypeDef* port;
+    uint16_t pin;
+
+    switch (index)
+    {
+    case 0: port = LED0_GPIO_PORT; pin = LED0_PIN; break;
+    case 1: port = LED1_GPIO_PORT; pin = LED1_PIN; break;
+    case 2: port = LED2_GPIO_PORT; pin = LED2_PIN; break;
+    case 3: port = LED3_GPIO_PORT; pin = LED3_PIN; break;
+    case 4: port = LED4_GPIO_PORT; pin = LED4_PIN; break;
+    default: return;
+    }
+
+    // Por ahora usamos:
+    // LETRA_OK      -> LED encendido
+    // LETRA_MAL_POS -> LED parpadeo se puede hacer luego; de momento encendido también
+    // LETRA_MAL     -> LED apagado
+    if (estado == LETRA_MAL)
+    {
+        HAL_GPIO_WritePin(port, pin, GPIO_PIN_RESET);
+    }
+    else
+    {
+        HAL_GPIO_WritePin(port, pin, GPIO_PIN_SET);
+    }
+}
+
+void UI_Init(void)
+{
+    // Nada especial: los pines ya están configurados por MX_GPIO_Init()
+    // Apagamos todos por si acaso
+    uint8_t vacio[LONGITUD_PALABRA] = {LETRA_MAL, LETRA_MAL, LETRA_MAL, LETRA_MAL, LETRA_MAL};
+    UI_MostrarResultado(vacio);
+}
+
+void UI_MostrarResultado(const uint8_t resultado[LONGITUD_PALABRA])
+{
+    for (uint8_t i = 0; i < LONGITUD_PALABRA; i++)
+    {
+        UI_SetLed(i, resultado[i]);
+    }
+}
