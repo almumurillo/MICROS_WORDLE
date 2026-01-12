@@ -1,0 +1,217 @@
+/*
+ * input.c
+ *  Gestión del teclado matricial 4x4 y envío de eventos al módulo juego
+ */
+
+#include "input.h"
+#include "main.h"      // Para usar los nombres de pines/pusertos
+#include "juego.h"     // Para llamar a Juego_OnLetter, Juego_OnEnter, etc.
+
+// ==== Definición de pines del teclado ====
+// Ajusta estos defines si en CubeMX has usado otros pines
+
+// Filas como salidas
+#define ROW1_GPIO_PORT   GPIOB
+#define ROW1_PIN         GPIO_PIN_0
+
+#define ROW2_GPIO_PORT   GPIOB
+#define ROW2_PIN         GPIO_PIN_1
+
+#define ROW3_GPIO_PORT   GPIOB
+#define ROW3_PIN         GPIO_PIN_2
+
+#define ROW4_GPIO_PORT   GPIOB
+#define ROW4_PIN         GPIO_PIN_4
+
+// Columnas como entradas con Pull‑up
+#define COL1_GPIO_PORT   GPIOB
+#define COL1_PIN         GPIO_PIN_13
+
+#define COL2_GPIO_PORT   GPIOB
+#define COL2_PIN         GPIO_PIN_14
+
+#define COL3_GPIO_PORT   GPIOB
+#define COL3_PIN         GPIO_PIN_15
+
+#define COL4_GPIO_PORT   GPIOB
+#define COL4_PIN         GPIO_PIN_5
+
+// ==== Parámetros de debounce / escaneo ====
+
+#define KEYPAD_SCAN_PERIOD_MS   5     // Cada cuántos ms escaneamos el teclado
+#define KEYPAD_DEBOUNCE_MS      20    // Tiempo mínimo para considerar pulsación estable
+
+// Contador para decidir cuándo toca escanear (se incrementa desde Juego_OnTick1ms)
+static uint32_t s_lastScanTime = 0;
+
+// Estado anterior de las teclas (matriz 4x4)
+static uint8_t s_prevKeyPressed = 0;   // 0 = ninguna, 1..16 = código de tecla
+static uint32_t s_keyPressTime = 0;    // Momento en ms en que se detectó la pulsación
+
+// ==== Mapa de teclas: de (fila,columna) a función/letra ====
+// Vamos a numerar las teclas de 1 a 16 así:
+//
+//  Fila1: K1  K2  K3  K4
+//  Fila2: K5  K6  K7  K8
+//  Fila3: K9  K10 K11 K12
+//  Fila4: K13 K14 K15 K16
+//
+// Aquí decides qué hace cada una: letra, BORRAR, ENTER, etc.
+
+// Función auxiliar: traduce código de tecla (1..16) a acción
+static void ProcesarTecla(uint8_t keyCode)
+{
+    switch (keyCode)
+    {
+    // Fila 1
+    case 1:  Juego_OnLetter('A'); break;  // F1C1
+    case 2:  Juego_OnLetter('B'); break;  // F1C2
+    case 3:  Juego_OnLetter('C'); break;  // F1C3
+    case 4:  Juego_OnLetter('D'); break;  // F1C4
+
+    // Fila 2
+    case 5:  Juego_OnLetter('E'); break;  // F2C1
+    case 6:  Juego_OnLetter('F'); break;  // F2C2
+    case 7:  Juego_OnLetter('G'); break;  // F2C3
+    case 8:  Juego_OnLetter('H'); break;  // F2C4
+
+    // Fila 3
+    case 9:  Juego_OnLetter('I'); break;  // F3C1
+    case 10: Juego_OnLetter('J'); break;  // F3C2
+    case 11: Juego_OnLetter('K'); break;  // F3C3
+    case 12: Juego_OnLetter('L'); break;  // F3C4
+
+    // Fila 4: funciones especiales
+    case 13: Juego_OnBackspace(); break;  // F4C1 = BORRAR
+    case 14: Juego_OnEnter();     break;  // F4C2 = ENTER
+    case 15: Juego_OnLetter('M'); break;  // F4C3 = M
+    case 16: Juego_OnLetter('N'); break;  // F4C4 = N
+
+    default:
+        break;
+    }
+}
+
+// ==== API pública ====
+
+void Input_Init(void)
+{
+    // De momento no hay nada especial que inicializar aquí,
+    // porque la configuración de pines la hace MX_GPIO_Init().
+    s_lastScanTime = 0;
+    s_prevKeyPressed = 0;
+    s_keyPressTime = 0;
+}
+
+// Función interna para poner todas las filas en alto (1)
+static void Keypad_SetAllRowsHigh(void)
+{
+    HAL_GPIO_WritePin(ROW1_GPIO_PORT, ROW1_PIN, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(ROW2_GPIO_PORT, ROW2_PIN, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(ROW3_GPIO_PORT, ROW3_PIN, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(ROW4_GPIO_PORT, ROW4_PIN, GPIO_PIN_SET);
+}
+
+// Lee las columnas y devuelve:
+//  0 si no hay ninguna pulsada
+//  1..16 según la tecla detectada
+static uint8_t Keypad_ReadKeyOnce(void)
+{
+    uint8_t key = 0;
+
+    // Empezamos poniendo todas las filas en alto
+    Keypad_SetAllRowsHigh();
+
+    // ------ Escaneo Fila 1 ------
+    HAL_GPIO_WritePin(ROW1_GPIO_PORT, ROW1_PIN, GPIO_PIN_RESET); // F1 = 0
+    // Las demás filas ya están a 1
+
+    if (HAL_GPIO_ReadPin(COL1_GPIO_PORT, COL1_PIN) == GPIO_PIN_RESET) key = 1;
+    else if (HAL_GPIO_ReadPin(COL2_GPIO_PORT, COL2_PIN) == GPIO_PIN_RESET) key = 2;
+    else if (HAL_GPIO_ReadPin(COL3_GPIO_PORT, COL3_PIN) == GPIO_PIN_RESET) key = 3;
+    else if (HAL_GPIO_ReadPin(COL4_GPIO_PORT, COL4_PIN) == GPIO_PIN_RESET) key = 4;
+
+    HAL_GPIO_WritePin(ROW1_GPIO_PORT, ROW1_PIN, GPIO_PIN_SET);   // F1 = 1
+
+    if (key != 0) return key;
+
+    // ------ Escaneo Fila 2 ------
+    HAL_GPIO_WritePin(ROW2_GPIO_PORT, ROW2_PIN, GPIO_PIN_RESET); // F2 = 0
+
+    if (HAL_GPIO_ReadPin(COL1_GPIO_PORT, COL1_PIN) == GPIO_PIN_RESET) key = 5;
+    else if (HAL_GPIO_ReadPin(COL2_GPIO_PORT, COL2_PIN) == GPIO_PIN_RESET) key = 6;
+    else if (HAL_GPIO_ReadPin(COL3_GPIO_PORT, COL3_PIN) == GPIO_PIN_RESET) key = 7;
+    else if (HAL_GPIO_ReadPin(COL4_GPIO_PORT, COL4_PIN) == GPIO_PIN_RESET) key = 8;
+
+    HAL_GPIO_WritePin(ROW2_GPIO_PORT, ROW2_PIN, GPIO_PIN_SET);   // F2 = 1
+
+    if (key != 0) return key;
+
+    // ------ Escaneo Fila 3 ------
+    HAL_GPIO_WritePin(ROW3_GPIO_PORT, ROW3_PIN, GPIO_PIN_RESET); // F3 = 0
+
+    if (HAL_GPIO_ReadPin(COL1_GPIO_PORT, COL1_PIN) == GPIO_PIN_RESET) key = 9;
+    else if (HAL_GPIO_ReadPin(COL2_GPIO_PORT, COL2_PIN) == GPIO_PIN_RESET) key = 10;
+    else if (HAL_GPIO_ReadPin(COL3_GPIO_PORT, COL3_PIN) == GPIO_PIN_RESET) key = 11;
+    else if (HAL_GPIO_ReadPin(COL4_GPIO_PORT, COL4_PIN) == GPIO_PIN_RESET) key = 12;
+
+    HAL_GPIO_WritePin(ROW3_GPIO_PORT, ROW3_PIN, GPIO_PIN_SET);   // F3 = 1
+
+    if (key != 0) return key;
+
+    // ------ Escaneo Fila 4 ------
+    HAL_GPIO_WritePin(ROW4_GPIO_PORT, ROW4_PIN, GPIO_PIN_RESET); // F4 = 0
+
+    if (HAL_GPIO_ReadPin(COL1_GPIO_PORT, COL1_PIN) == GPIO_PIN_RESET) key = 13;
+    else if (HAL_GPIO_ReadPin(COL2_GPIO_PORT, COL2_PIN) == GPIO_PIN_RESET) key = 14;
+    else if (HAL_GPIO_ReadPin(COL3_GPIO_PORT, COL3_PIN) == GPIO_PIN_RESET) key = 15;
+    else if (HAL_GPIO_ReadPin(COL4_GPIO_PORT, COL4_PIN) == GPIO_PIN_RESET) key = 16;
+
+    HAL_GPIO_WritePin(ROW4_GPIO_PORT, ROW4_PIN, GPIO_PIN_SET);   // F4 = 1
+
+    return key;   // 0 si ninguna tecla, 1..16 si alguna
+}
+
+// Esta función se llama cada pocos ms (p.ej. desde el timer)
+// y gestiona debounce + generación de eventos hacia juego.c
+void Input_ScanKeypad(void)
+{
+    extern uint32_t HAL_GetTick(void);  // ya declarada en HAL
+    uint32_t now = HAL_GetTick();
+
+    // Solo escaneamos cada KEYPAD_SCAN_PERIOD_MS para no saturar
+    if ((now - s_lastScanTime) < KEYPAD_SCAN_PERIOD_MS)
+        return;
+    s_lastScanTime = now;
+
+    uint8_t keyNow = Keypad_ReadKeyOnce();
+
+    if (keyNow != 0)
+    {
+        // Hay alguna tecla pulsada
+        if (s_prevKeyPressed == 0)
+        {
+            // Es una pulsación nueva: guardamos cuál y cuándo empezó
+            s_prevKeyPressed = keyNow;
+            s_keyPressTime = now;
+        }
+        else
+        {
+            // Ya había una tecla pulsada; comprobamos si ha pasado el debounce
+            if (s_prevKeyPressed == keyNow &&
+                (now - s_keyPressTime) >= KEYPAD_DEBOUNCE_MS)
+            {
+                // Pulsación estable: generamos el evento UNA SOLA VEZ
+                ProcesarTecla(keyNow);
+
+                // Marcamos como "sin tecla" para no repetir el evento
+                s_prevKeyPressed = 0;
+            }
+        }
+    }
+    else
+    {
+        // No hay ninguna tecla pulsada en este momento
+        s_prevKeyPressed = 0;
+    }
+}
