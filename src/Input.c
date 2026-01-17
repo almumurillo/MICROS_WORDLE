@@ -1,0 +1,223 @@
+/*
+ * input.c
+ *  Gestión del teclado matricial 4x4 y envío de eventos al módulo juego
+ */
+#include "input.h"
+#include "main.h"	//pines, HAL,...
+#include "juego.h"	//Para llamar a juego_OnLetter() y Juego_OnBackspace()
+#include "ui.h"		//Para llamar a UI_SetPaginaIndicador() cuando cambias de pagina
+#include <stdint.h>
+
+//Filas->row se usan como salidas
+#define ROW1_GPIO_PORT   GPIOB
+#define ROW1_PIN         GPIO_PIN_0
+#define ROW2_GPIO_PORT   GPIOB
+#define ROW2_PIN         GPIO_PIN_1
+#define ROW3_GPIO_PORT   GPIOB
+#define ROW3_PIN         GPIO_PIN_2
+#define ROW4_GPIO_PORT   GPIOB
+#define ROW4_PIN         GPIO_PIN_4
+
+//Columnas->col se leen como entradas
+#define COL1_GPIO_PORT   GPIOB
+#define COL1_PIN         GPIO_PIN_13
+#define COL2_GPIO_PORT   GPIOB
+#define COL2_PIN         GPIO_PIN_14
+#define COL3_GPIO_PORT   GPIOB
+#define COL3_PIN         GPIO_PIN_15
+#define COL4_GPIO_PORT   GPIOB
+#define COL4_PIN         GPIO_PIN_5
+
+#define KEYPAD_SCAN_PERIOD_MS   5		//Cada cuántos ms escaneamos el teclado
+#define KEYPAD_DEBOUNCE_MS      20		//Una tecla es valida si permanece igual durante por lo menos 20ms
+
+static uint32_t s_lastScanTime = 0;	      // Contador para decidir cuándo toca escanear (se incrementa desde Juego_OnTick1ms)
+static uint8_t  s_prevKeyPressed = 0;	 // 0 = ninguna, 1..16 = código de tecla
+static uint32_t s_keyPressTime = 0;		// Momento en ms en que se detectó la pulsación
+
+// Página actual para letras A..Z
+static uint8_t s_pagina = 0;
+
+void Input_ResetPagina(void)
+{
+    s_pagina = 0;
+    UI_SetPaginaIndicador(0);
+}
+
+void Input_Init(void)
+{
+    s_lastScanTime = 0;
+    s_prevKeyPressed = 0;
+    s_keyPressTime = 0;
+    Input_ResetPagina();
+}
+
+static void Keypad_SetAllRowsHigh(void)
+{
+    HAL_GPIO_WritePin(ROW1_GPIO_PORT, ROW1_PIN, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(ROW2_GPIO_PORT, ROW2_PIN, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(ROW3_GPIO_PORT, ROW3_PIN, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(ROW4_GPIO_PORT, ROW4_PIN, GPIO_PIN_SET);
+}
+
+// Devuelve keyCode 0..16 (matriz fila)
+static uint8_t Keypad_ReadKeyOnce(void)
+{
+    uint8_t key = 0;
+    Keypad_SetAllRowsHigh();
+
+    // Fila 1
+    HAL_GPIO_WritePin(ROW1_GPIO_PORT, ROW1_PIN, GPIO_PIN_RESET);
+    if      (HAL_GPIO_ReadPin(COL1_GPIO_PORT, COL1_PIN) == GPIO_PIN_RESET) key = 1;
+    else if (HAL_GPIO_ReadPin(COL2_GPIO_PORT, COL2_PIN) == GPIO_PIN_RESET) key = 2;
+    else if (HAL_GPIO_ReadPin(COL3_GPIO_PORT, COL3_PIN) == GPIO_PIN_RESET) key = 3;
+    else if (HAL_GPIO_ReadPin(COL4_GPIO_PORT, COL4_PIN) == GPIO_PIN_RESET) key = 4;
+    HAL_GPIO_WritePin(ROW1_GPIO_PORT, ROW1_PIN, GPIO_PIN_SET);
+    if (key) return key;
+
+    // Fila 2
+    HAL_GPIO_WritePin(ROW2_GPIO_PORT, ROW2_PIN, GPIO_PIN_RESET);
+    if      (HAL_GPIO_ReadPin(COL1_GPIO_PORT, COL1_PIN) == GPIO_PIN_RESET) key = 5;
+    else if (HAL_GPIO_ReadPin(COL2_GPIO_PORT, COL2_PIN) == GPIO_PIN_RESET) key = 6;
+    else if (HAL_GPIO_ReadPin(COL3_GPIO_PORT, COL3_PIN) == GPIO_PIN_RESET) key = 7;
+    else if (HAL_GPIO_ReadPin(COL4_GPIO_PORT, COL4_PIN) == GPIO_PIN_RESET) key = 8;
+    HAL_GPIO_WritePin(ROW2_GPIO_PORT, ROW2_PIN, GPIO_PIN_SET);
+    if (key) return key;
+
+    // Fila 3
+    HAL_GPIO_WritePin(ROW3_GPIO_PORT, ROW3_PIN, GPIO_PIN_RESET);
+    if      (HAL_GPIO_ReadPin(COL1_GPIO_PORT, COL1_PIN) == GPIO_PIN_RESET) key = 9;
+    else if (HAL_GPIO_ReadPin(COL2_GPIO_PORT, COL2_PIN) == GPIO_PIN_RESET) key = 10;
+    else if (HAL_GPIO_ReadPin(COL3_GPIO_PORT, COL3_PIN) == GPIO_PIN_RESET) key = 11;
+    else if (HAL_GPIO_ReadPin(COL4_GPIO_PORT, COL4_PIN) == GPIO_PIN_RESET) key = 12;
+    HAL_GPIO_WritePin(ROW3_GPIO_PORT, ROW3_PIN, GPIO_PIN_SET);
+    if (key) return key;
+
+    // Fila 4
+    HAL_GPIO_WritePin(ROW4_GPIO_PORT, ROW4_PIN, GPIO_PIN_RESET);
+    if      (HAL_GPIO_ReadPin(COL1_GPIO_PORT, COL1_PIN) == GPIO_PIN_RESET) key = 13;
+    else if (HAL_GPIO_ReadPin(COL2_GPIO_PORT, COL2_PIN) == GPIO_PIN_RESET) key = 14;
+    else if (HAL_GPIO_ReadPin(COL3_GPIO_PORT, COL3_PIN) == GPIO_PIN_RESET) key = 15;
+    else if (HAL_GPIO_ReadPin(COL4_GPIO_PORT, COL4_PIN) == GPIO_PIN_RESET) key = 16;
+    HAL_GPIO_WritePin(ROW4_GPIO_PORT, ROW4_PIN, GPIO_PIN_SET);
+
+    return key;
+}
+
+static void ProcesarTecla(uint8_t keyCode)
+{
+
+    // Teclado físico:
+    // 1 2 3 A
+    // 4 5 6 B
+    // 7 8 9 C
+    // * 0 # D
+    //
+    // Controles:
+    // C (keyCode 12) borrar
+    // D (keyCode 16) enter
+    // * (keyCode 13) página anterior
+    // # (keyCode 15) página siguiente
+
+	if (keyCode == 13) { // *
+	    s_pagina = (uint8_t)((s_pagina + 2) % 3);
+	    UI_SetPaginaIndicador(s_pagina);
+	    Juego_RequestLcdUpdate();    
+	    return;
+	}
+	if (keyCode == 15) { // #
+	    s_pagina = (uint8_t)((s_pagina + 1) % 3);
+	    UI_SetPaginaIndicador(s_pagina);
+	    Juego_RequestLcdUpdate();   
+	    return;
+	}
+
+    if (keyCode == 12) { Juego_OnBackspace(); return; } // C
+    if (keyCode == 16) { Juego_OnEnter();     return; } // D
+
+    if (keyCode == 13) { // *
+        s_pagina = (uint8_t)((s_pagina + 2) % 3);
+        UI_SetPaginaIndicador(s_pagina);
+        return;
+    }
+    if (keyCode == 15) { // #
+        s_pagina = (uint8_t)((s_pagina + 1) % 3);
+        UI_SetPaginaIndicador(s_pagina);
+        return;
+    }
+
+    int8_t idx = -1;
+    switch (keyCode)
+    {
+        case 1:  idx = 0;  break; // 1
+        case 2:  idx = 1;  break; // 2
+        case 3:  idx = 2;  break; // 3
+        case 4:  idx = 3;  break; // A
+        case 5:  idx = 4;  break; // 4
+        case 6:  idx = 5;  break; // 5
+        case 7:  idx = 6;  break; // 6
+        case 8:  idx = 7;  break; // B
+        case 9:  idx = 8;  break; // 7
+        case 10: idx = 9;  break; // 8
+        case 11: idx = 10; break; // 9
+        case 14: idx = 11; break; // 0
+        default: idx = -1; break;
+    }
+    if (idx < 0) return;
+
+    char c = 0;
+    if (s_pagina == 0)      c = (char)('A' + idx); // A..L
+    else if (s_pagina == 1) c = (char)('M' + idx); // M..X
+    else
+    {
+        if      (idx == 0) c = 'Y';
+        else if (idx == 1) c = 'Z';
+        else               c = 0;
+    }
+
+    if (c != 0) Juego_OnLetter(c);
+}
+
+void Input_ScanKeypad(void)
+{
+    uint32_t now = HAL_GetTick();
+
+    // Solo escaneamos cada KEYPAD_SCAN_PERIOD_MS para no saturar
+    if ((now - s_lastScanTime) < KEYPAD_SCAN_PERIOD_MS)
+        return;
+    s_lastScanTime = now;
+
+    uint8_t keyNow = Keypad_ReadKeyOnce();
+
+    if (keyNow != 0)
+    {
+    	// Hay alguna tecla pulsada
+        if (s_prevKeyPressed == 0)
+        {
+        	// Es una pulsación nueva: guardamos cuál y cuándo empezó
+            s_prevKeyPressed = keyNow;
+            s_keyPressTime = now;
+        }
+        else
+        {
+        	// Ya había una tecla pulsada; comprobamos si ha pasado el debounce
+            if (s_prevKeyPressed == keyNow &&
+                (now - s_keyPressTime) >= KEYPAD_DEBOUNCE_MS)
+            {
+            	// Pulsación estable: generamos el evento UNA SOLA VEZ
+                ProcesarTecla(keyNow);
+                // Marcamos como "sin tecla" para no repetir el evento
+                s_prevKeyPressed = 0;
+            }
+        }
+    }
+    else
+    {
+    	// No hay ninguna tecla pulsada en este momento
+        s_prevKeyPressed = 0;
+    }
+}
+uint8_t Input_GetPagina(void)
+{
+    return s_pagina;
+}
