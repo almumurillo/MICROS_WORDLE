@@ -6,11 +6,13 @@
 #include "input.h"
 #include "main.h"      // Para usar los nombres de pines/pusertos
 #include "juego.h"     // Para llamar a Juego_OnLetter, Juego_OnEnter, etc.
+#include "ui.h"		//Para llamar a UI_SetPaginaIndicador() cuando cambias de pagina
+#include <stdint.h>
 
 // ==== Definición de pines del teclado ====
-// Ajusta estos defines si en CubeMX has usado otros pines
 
-// Filas como salidas
+
+// Filas se usan como salidas
 #define ROW1_GPIO_PORT   GPIOB
 #define ROW1_PIN         GPIO_PIN_0
 
@@ -45,18 +47,17 @@
 static uint32_t s_lastScanTime = 0;
 
 // Estado anterior de las teclas (matriz 4x4)
+static uint32_t s_lastScanTime = 0;
 static uint8_t s_prevKeyPressed = 0;   // 0 = ninguna, 1..16 = código de tecla
 static uint32_t s_keyPressTime = 0;    // Momento en ms en que se detectó la pulsación
 
 // ==== Mapa de teclas: de (fila,columna) a función/letra ====
-// Vamos a numerar las teclas de 1 a 16 así:
 //
 //  Fila1: K1  K2  K3  K4
 //  Fila2: K5  K6  K7  K8
 //  Fila3: K9  K10 K11 K12
 //  Fila4: K13 K14 K15 K16
 //
-// Aquí decides qué hace cada una: letra, BORRAR, ENTER, etc.
 
 // Función auxiliar: traduce código de tecla (1..16) a acción
 static void ProcesarTecla(uint8_t keyCode)
