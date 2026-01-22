@@ -7,8 +7,7 @@
 #include "lcd_i2c.h"
 #include <string.h>
 
-// PCF8574 -> LCD en modo 4-bit típico
-// Bits (muy comunes):
+// PCF8574 -> LCD en modo 4-bit
 // P0=RS, P1=RW, P2=E, P3=BACKLIGHT, P4=D4, P5=D5, P6=D6, P7=D7
 #define LCD_RS  (1<<0)
 #define LCD_RW  (1<<1)
@@ -104,4 +103,5 @@ void LCD_PrintChar(char c)
 {
     data((uint8_t)c);
 }
+
 
