@@ -106,6 +106,7 @@ void Juego_RequestLcdUpdate(void)
 
 static void NuevaPartida_EnMainLoop(void)
 {
+	Palabras_Init(HAL_GetTick());
     const char* palabra = Palabras_GetRandom();
 
     strncpy(s_objetivo, palabra, LONGITUD_PALABRA);
@@ -173,8 +174,6 @@ static void CalcularResultado(const char* intento,
 
 void Juego_Init(void)
 {
-    // Inicializa el módulo de palabras con semilla temporal
-    Palabras_Init(HAL_GetTick());
 
     s_estado = JUEGO_WAIT_START;
     UI_ClearLetters();
@@ -200,7 +199,7 @@ void Juego_Task(void)
 	        }
 	    }
 
-	    // 2) Refresco LCD completo si se pidió
+	    // 2) Refresco LCD completo si se pide
 	    if (s_lcd_full_refresh_request)
 	    {
 	        s_lcd_full_refresh_request = 0;
@@ -224,7 +223,7 @@ void Juego_Task(void)
 	        return;
 	    }
 
-	    // 3) Refresco de estado (tiempo/intentos) si se pidió
+	    // 3) Refresco de estado (tiempo/intentos) si se pide
 	    if (s_lcd_update_request)
 	    {
 	        s_lcd_update_request = 0;
