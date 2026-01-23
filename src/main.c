@@ -67,17 +67,10 @@ int main(void)
   Input_Init();  // inicializa teclado + página 0 (si tienes Input_ResetPagina dentro)
 
 
-
-  //HAL_GPIO_WritePin(GPIOE, GPIO_PIN_9, GPIO_PIN_SET);
-
-  /* USER CODE END 2 */
-
   while (1)
   {
-    /* USER CODE BEGIN 3 */
     Juego_Task();
     Input_ScanKeypad();
-    /* USER CODE END 3 */
   }
 }
 
@@ -230,9 +223,6 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     if (htim->Instance == TIM2)
     {
         Juego_OnTick1ms();
-
-        // Debug opcional: LD6 parpadea (no pisa LED de páginas)
-       // HAL_GPIO_TogglePin(LD6_GPIO_Port, LD6_Pin);
     }
 }
 
@@ -241,9 +231,6 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
     if (GPIO_Pin == GPIO_PIN_0)
     {
         Juego_OnStartButton();
-
-        // Debug opcional
-       // HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
     }
 }
 
@@ -253,4 +240,5 @@ void Error_Handler(void)
   __disable_irq();
   while (1) {}
 }
+
 
