@@ -8,7 +8,7 @@
 #include "lcd_i2c.h"
 /* USER CODE END Includes */
 
-/* Private variables ---------------------------------------------------------*/
+/* Variables privadas ---------------------------------------------------------*/
 ADC_HandleTypeDef hadc1;
 I2C_HandleTypeDef hi2c1;
 I2S_HandleTypeDef hi2s2;
@@ -17,23 +17,13 @@ SPI_HandleTypeDef hspi1;
 TIM_HandleTypeDef htim2;
 UART_HandleTypeDef huart2;
 
-/* Private function prototypes -----------------------------------------------*/
+/* Pototipo funcoines privadas -----------------------------------------------*/
 void SystemClock_Config(void);
 void PeriphCommonClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_I2C1_Init(void);
 
-/* USER CODE BEGIN PD */
-// ===== Pines reservados para DISPLAY (4 pines) =====
-// Los dejamos SIN configurar todavía (libres).
-// Reserva propuesta (ajústalo cuando pongas display):
-//   DISP_D0 -> PC4
-//   DISP_D1 -> PC6
-//   DISP_D2 -> PC7
-//   DISP_D3 -> PA1 (por ejemplo)
-// Nota: PC5 lo estás usando ahora para LED4 rojo.
-/* USER CODE END PD */
 
 static void MX_I2C1_Init(void)
 {
@@ -64,8 +54,6 @@ int main(void)
   MX_I2C1_Init();
 
 
-
-
   /* USER CODE BEGIN 2 */
   HAL_TIM_Base_Start_IT(&htim2);
 
@@ -93,8 +81,8 @@ int main(void)
   }
 }
 
-/**
-  * @brief System Clock Configuration
+/*
+  *Configuracion Clock 
   */
 void SystemClock_Config(void)
 {
@@ -258,10 +246,11 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
        // HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
     }
 }
-/* USER CODE END 4 */
+
 
 void Error_Handler(void)
 {
   __disable_irq();
   while (1) {}
 }
+
